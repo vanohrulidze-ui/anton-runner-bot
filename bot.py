@@ -80,6 +80,17 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """
     Сервисное сообщение от WebApp.
     Сюда прилетает JSON, который отправила игра через Telegram.WebApp.sendData().
+
+    Ожидаемый формат данных (минимум):
+        {
+          "score": 120,
+          "finished": true/false,
+          "obstacles_passed": 15,
+
+          # дополнительные поля опциональны:
+          "lives_left": 2,
+          "bonuses_collected": 3
+        }
     """
     msg = update.effective_message
     web_app_data = msg.web_app_data
@@ -104,15 +115,14 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    # Ожидаем формат:
-    # {
-    #   "score": 120,
-    #   "finished": true/false,
-    #   "obstacles_passed": 15
-    # }
+    # Базовые поля
     score = data.get("score")
     finished = data.get("finished")
     obstacles_passed = data.get("obstacles_passed")
+
+    # Дополнительные поля (опционально)
+    lives_left = data.get("lives_left")
+    bonuses_collected = data.get("bonuses_collected")
 
     # Подстрахуемся, если чего-то нет
     if score is None:
@@ -120,18 +130,22 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if obstacles_passed is None:
         obstacles_passed = 0
 
+    # Собираем текст для чата
+    lines = []
     if finished:
-        text = (
-            f"{user.first_name} прошёл(ла) игру и победил(а)! 🎉\n"
-            f"Препятствий пройдено: {obstacles_passed}\n"
-            f"Очков: {score}"
-        )
+        lines.append(f"{user.first_name} прошёл(ла) игру и победил(а)! 🎉")
     else:
-        text = (
-            f"{user.first_name} не дошёл(ла) до финала.\n"
-            f"Препятствий пройдено: {obstacles_passed}\n"
-            f"Очков: {score}"
-        )
+        lines.append(f"{user.first_name} не дошёл(ла) до финала.")
+
+    lines.append(f"Препятствий пройдено: {obstacles_passed}")
+    lines.append(f"Очков: {score}")
+
+    if lives_left is not None:
+        lines.append(f"Жизней осталось: {lives_left}")
+    if bonuses_collected is not None:
+        lines.append(f"Бонусов собрано: {bonuses_collected}")
+
+    text = "\n".join(lines)
 
     await context.bot.send_message(
         chat_id=chat.id,
