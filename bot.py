@@ -21,6 +21,12 @@ from telegram.ext import (
 
 # ========= ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ =========
 
+# В Railway / Variables:
+# BOT_TOKEN      – токен бота от BotFather
+# WEB_APP_URL    – HTTPS-ссылка на игру
+# BOT_USERNAME   – username бота без @ (например "anton_runner_bot")
+# ADMIN_CHAT_ID  – chat.id твоей лички с ботом (целое число)
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 WEB_APP_URL = os.environ.get("WEB_APP_URL")
 BOT_USERNAME = os.environ.get("BOT_USERNAME")
@@ -65,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     args = context.args or []
 
-    # В ЛИЧКЕ
+    # ЛИЧНЫЙ ЧАТ
     if chat.type == "private":
         if args:
             logger.info("Личный /start от %s с параметром: %s", user.id, args[0])
@@ -87,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    # В ГРУППЕ / СУПЕРГРУППЕ
+    # ГРУППА / СУПЕРГРУППА
     if chat.type in ("group", "supergroup"):
         deep_link = f"https://t.me/{BOT_USERNAME}?start=group_{chat.id}"
 
@@ -100,7 +106,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         await update.message.reply_text(
             (
-                "Чтобы сыграть, нажми «Играть в игру».\n"
+                "Чтобы сыграть, отправь /start и нажми «Играть в игру».\n"
                 "Игра откроется в личке с ботом.\n"
             ),
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -123,18 +129,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Сюда прилетает JSON от игры через Telegram.WebApp.sendData().
-    Твой index.html сейчас шлёт:
-      { "type": "game_result", "score": <число>, "won": true/false }
+    Сюда прилетают ВСЕ сообщения, мы вручную отфильтруем только те,
+    где есть web_app_data (данные от WebApp).
     """
     msg = update.effective_message
+    if not msg or not msg.web_app_data:
+        # Обычное сообщение, не из WebApp – игнорируем
+        return
+
     web_app_data = msg.web_app_data
     user = update.effective_user
-    chat = update.effective_chat  # это личка, откуда запускалась игра
-
-    if not web_app_data:
-        logger.warning("Получено WEB_APP_DATA, но web_app_data пустой")
-        return
+    chat = update.effective_chat  # обычно это личка, где запустили игру
 
     raw_data = web_app_data.data
     logger.info(
@@ -147,7 +152,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         data = json.loads(raw_data)
     except json.JSONDecodeError:
-        # если JSON битый – сказать админу, если он настроен
         text = (
             f"⚠️ WebApp прислал некорректный JSON от {user.first_name} "
             f"(@{user.username}):\n`{raw_data}`"
@@ -160,12 +164,8 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
         return
 
-    # Под твой HTML:
-    # {
-    #   "type": "game_result",
-    #   "score": 123,
-    #   "won": true/false
-    # }
+    # Ожидаемый формат от твоего index.html:
+    # { "type": "game_result", "score": <число>, "won": true/false }
     result_type = data.get("type")
     score = data.get("score")
     won = data.get("won")
@@ -174,7 +174,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         score = 0
 
     if result_type != "game_result":
-        # неожиданный тип – просто отправим админу «как есть»
+        # Неожиданный тип – отправим админу как есть
         text = (
             f"ℹ️ Неизвестный тип web_app_data от {user.first_name} "
             f"(@{user.username}):\n`{raw_data}`"
@@ -187,7 +187,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
         return
 
-    # Формируем нормальный текст результата
+    # Формируем текст результата
     if won:
         status_line = "🎉 Победа!"
     else:
@@ -200,10 +200,10 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Очков: {score}"
     )
 
-    # 1) Игроку – короткое подтверждение
+    # 1) Игроку – подтверждение
     await context.bot.send_message(
         chat_id=chat.id,
-        text="Спасибо за игру!",
+        text="Результат игры отправлен администратору, спасибо за игру!",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -215,7 +215,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     else:
         logger.warning(
-            "ADMIN_CHAT_ID не настроен",
+            "ADMIN_CHAT_ID не настроен, результат игры от %s (%s) не отправлен админу",
             user.id,
             user.username,
         )
@@ -226,11 +226,13 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # Команды
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
+    # Ловим ВСЕ сообщения, внутри web_app_data сами отфильтруем
     application.add_handler(
-        MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data)
+        MessageHandler(filters.ALL, web_app_data)
     )
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
