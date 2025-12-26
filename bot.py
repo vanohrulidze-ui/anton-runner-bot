@@ -63,10 +63,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     args = context.args or []
 
-    # ВРЕМЕННО: всегда показываем chat.id, чтобы ты точно его увидел
-    if update.message:
-        await update.message.reply_text(f"Этот chat.id: {chat.id}")
-
     # ЛИЧНЫЙ ЧАТ
     if chat.type == "private":
         # Параметр /start group_<chat_id> сейчас логируем для информации, но не используем
