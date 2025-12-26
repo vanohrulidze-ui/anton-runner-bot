@@ -66,6 +66,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
   chat = update.effective_chat
   user = update.effective_user
   args = context.args or []
+    
+    # >>> ВРЕМЕННЫЙ ВСТАВЛЕННЫЙ КУСОК <<<
+    # Просто показать тебе chat.id того чата, где ты написал /start
+    if update.message:
+        await update.message.reply_text(f"Этот chat.id: {chat.id}")
+    # <<< КОНЕЦ ВРЕМЕННОГО КУСОЧКА >>>
 
   # ЛИЧНЫЙ ЧАТ
   if chat.type == "private":
